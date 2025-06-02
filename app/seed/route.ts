@@ -88,30 +88,33 @@ async function seedRevenue() {
     );
   `;
 
-  const insertedRevenue = await Promise.all(
-    revenue.map(
-      (rev) => sql`
-        INSERT INTO revenue (month, revenue)
-        VALUES (${rev.month}, ${rev.revenue})
-        ON CONFLICT (month) DO NOTHING;
-      `,
-    ),
-  );
-
-  return insertedRevenue;
+  // Insert revenue rows sequentially to avoid statement timeout
+  for (const rev of revenue) {
+    await sql`
+      INSERT INTO revenue (month, revenue)
+      VALUES (${rev.month}, ${rev.revenue})
+      ON CONFLICT (month) DO NOTHING;
+    `;
+  }
 }
 
 export async function GET() {
   try {
-    const result = await sql.begin((sql) => [
-      seedUsers(),
-      seedCustomers(),
-      seedInvoices(),
-      seedRevenue(),
-    ]);
-
+    console.log('Seeding users...');
+    await sql.begin(async (sql) => {
+      await seedUsers();
+      console.log('Users seeded. Seeding customers...');
+      await seedCustomers();
+      console.log('Customers seeded. Seeding invoices...');
+      await seedInvoices();
+      console.log('Invoices seeded. Seeding revenue...');
+      await seedRevenue();
+      console.log('Revenue seeded.');
+    });
+    console.log('Database seeded successfully.');
     return Response.json({ message: 'Database seeded successfully' });
   } catch (error) {
+    console.error('Seeding error:', error);
     return Response.json({ error }, { status: 500 });
   }
 }
